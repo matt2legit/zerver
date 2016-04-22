@@ -1,189 +1,147 @@
-var fs     = require('fs');
-var path   = require('path');
-var Module = require('module');
+var fs     = require('fs'),
+	path   = require('path'),
+	Module = require('module');
 
-var projectRoot = path.resolve(path.join(__dirname, '..'));
-var time        = new Date();
-var queue       = [];
-var fsDirSync   = fs.readdirSync;
-var fsReadSync  = fs.readFileSync;
-var fsStatSync  = fs.statSync;
-var fsLstatSync = fs.lstatSync;
-var moduleFind  = Module._findPath;
-var queueRunning = false;
+var projectRoot = path.resolve(__dirname+'/../'),
+	time        = new Date(),
+	queue       = [],
+	fs_dir      = fs.readdirSync,
+	fs_read     = fs.readFileSync,
+	fs_stat     = fs.statSync,
+	fs_lstat    = fs.lstatSync,
+	module_find = Module._findPath;
 
-exports.time = time;
+exports.time    = time;
 exports.runTest = runTest;
 
-// Preload dependencies
-// TODO: Why do I have to do this?!
-require(path.join(__dirname, '..', 'src', 'plugin', 'babel'));
-require(path.join(__dirname, '..', 'src', 'plugin', 'less'));
-require(path.join(__dirname, '..', 'src', 'plugin', 'jade'));
-require('babel-core').transform('var sup = 10;', { presets: [require('babel-preset-es2015'), require('babel-preset-react')] });
-require('less');
-require('jade');
-require('cheerio');
-require('clean-css');
-require('html-minifier');
-require('uglify-js');
-
-require(__dirname + '/static');
-require(__dirname + '/api');
+require(__dirname+'/static');
+require(__dirname+'/api'   );
 
 
 
 function queueTask(task) {
-    queue.push(task);
-    if (!queueRunning) {
-        process.nextTick(runTask);
-    }
+	queue.push(task);
+	if (queue.length === 1) {
+		process.nextTick(runTask);
+	}
 }
 
 function runTask() {
-    if (queueRunning) {
-        return;
-    }
-    var task = queue.shift();
-    if (task) {
-        queueRunning = true;
-        task(function () {
-            queueRunning = false;
-            process.nextTick(runTask);
-        });
-    }
+	var task = queue[0];
+	if (task) {
+		task(function () {
+			queue.shift();
+			process.nextTick(runTask);
+		});
+	}
 }
 
 function runTest(testObj, files, callback) {
-    var root = '';
+	var root = '';
 
-    function isFile(file) {
-        return typeof file === 'string' || Buffer.isBuffer(file);
-    }
+	function isRoot(filename) {
+		return (filename === root || filename === root+'/');
+	}
 
-    function findFile(filename) {
-        if (filename[filename.length - 1] === '/') {
-            filename = filename.substr(0, filename.length - 1);
-        }
-        var segments = filename.split('/').slice(1);
-        var folder   = files;
-        var segment;
-        while (segment = segments.shift()) {
-            if (!(segment in folder)) {
-                throw Error('file not found, ' + filename);
-            }
-            folder = folder[segment];
-        }
-        return folder;
-    }
+	function isFile(file) {
+		return (typeof file === 'string' || Buffer.isBuffer(file))
+	}
 
-    queueTask(function (dequeue) {
-        fs.readdirSync = function (filename) {
-            if (filename.substr(0, projectRoot.length) === projectRoot) {
-                return fsDirSync.call(fs, filename);
-            }
-            var file = findFile(filename);
-            if (isFile(file)) {
-                throw Error('directory is a file, ' + filename);
-            }
-            return Object.keys(file);
-        };
-        fs.readdir = function (filename, cb) {
-            try {
-                cb(null, fs.readdirSync(filename));
-            } catch (err) {
-                cb(err);
-            }
-        };
+	function findFile(filename) {
+		if (filename[filename.length-1] === '/') {
+			filename = filename.substr(0, filename.length-1);
+		}
+		var segments = filename.split('/').slice(1),
+			folder   = files,
+			segment;
+		while (segment = segments.shift()) {
+			if ( !(segment in folder) ) {
+				throw Error('file not found, ' + filename);
+			}
+			folder = folder[segment];
+		}
+		return folder;
+	}
 
-        fs.readFileSync = function (filename) {
-            if (filename.substr(0, projectRoot.length) === projectRoot) {
-                return fsReadSync.call(fs, filename);
-            }
-            var file = findFile(filename);
-            if (!isFile(file)) {
-                throw Error('file is a directory, ' + filename);
-            }
-            return file;
-        };
-        fs.readFile = function (filename, cb) {
-            try {
-                cb(null, fs.readFileSync(filename));
-            } catch (err) {
-                cb(err);
-            }
-        };
+	queueTask(function (dequeue) {
+		fs.readdirSync = function (filename) {
+			if (filename.substr(0, projectRoot.length) === projectRoot) {
+				return fs_dir.call(fs, filename);
+			}
+			var file = findFile(filename);
+			if ( isFile(file) ) {
+				throw Error('directory is a file, ' + filename);
+			}
+			return Object.keys(file);
+		};
 
-        fs.statSync = function (filename) {
-            if (filename.substr(0, projectRoot.length) === projectRoot) {
-                return fsStatSync.call(fs, filename);
-            } else {
-                return statFile(filename);
-            }
-        };
-        fs.stat = function (filename, cb) {
-            try {
-                cb(null, fs.statSync(filename));
-            } catch (err) {
-                cb(err);
-            }
-        };
+		fs.readFileSync = function (filename) {
+			if (filename.substr(0, projectRoot.length) === projectRoot) {
+				return fs_read.call(fs, filename);
+			}
+			var file = findFile(filename);
+			if ( !isFile(file) ) {
+				throw Error('file is a directory, ' + filename);
+			}
+			return file;
+		};
 
-        fs.lstatSync = function (filename) {
-            if (filename.substr(0, projectRoot.length) === projectRoot) {
-                return fsLstatSync.call(fs, filename);
-            } else {
-                return statFile(filename);
-            }
-        };
-        fs.lstat = function (filename, cb) {
-            try {
-                cb(null, fs.lstatSync(filename));
-            } catch (err) {
-                cb(err);
-            }
-        };
+		fs.statSync = function (filename) {
+			if (filename.substr(0, projectRoot.length) === projectRoot) {
+				return fs_stat.call(fs, filename);
+			} else {
+				return statFile(filename);
+			}
+		};
 
-        Module._findPath = function (filename, paths) {
-            if (filename[0] === '/' && filename.substr(0, projectRoot.length) !== projectRoot) {
-                return filename + '.js';
-            } else {
-                return moduleFind.apply(this, arguments);
-            }
-        };
+		fs.lstatSync = function (filename) {
+			if (filename.substr(0, projectRoot.length) === projectRoot) {
+				return fs_lstat.call(fs, filename);
+			} else {
+				return statFile(filename);
+			}
+		};
 
-        function statFile(filename) {
-            var file = findFile(filename);
-            return {
-                atime      : time,
-                mtime      : time,
-                ctime      : time,
-                isDirectory: function () {
-                    return !isFile(file);
-                },
-                isFile: function () {
-                    return !isFile(file);
-                },
-                isBlockDevice: function () {
-                    return false;
-                },
-                isCharacterDevice: function () {
-                    return false;
-                },
-                isSymbolicLink: function () {
-                    return false;
-                },
-                isFiFO: function () {
-                    return false;
-                },
-                isSocket: function () {
-                    return false;
-                },
-            };
-        }
+		Module._findPath = function (filename, paths) {
+			if (filename[0] === '/' && filename.substr(0, projectRoot.length) !== projectRoot) {
+				return filename+'.js';
+			} else {
+				return module_find.apply(this, arguments);
+			}
+		};
 
-        testObj(root, function (obj) {
-            callback(obj, files, dequeue);
-        });
-    });
+		function statFile(filename) {
+			var file = findFile(filename);
+			return {
+				atime: time,
+				mtime: time,
+				ctime: time,
+				isDirectory: function () {
+					return !isFile(file);
+				},
+				isFile: function () {
+					return !isFile(file);
+				},
+				isBlockDevice: function () {
+					return false;
+				},
+				isCharacterDevice: function () {
+					return false;
+				},
+				isSymbolicLink: function () {
+					return false;
+				},
+				isFiFO: function () {
+					return false;
+				},
+				isSocket: function () {
+					return false;
+				},
+			};
+		}
+
+		testObj(root, function (obj) {
+			callback(obj, files, dequeue);
+		});
+	});
 }
