@@ -248,7 +248,7 @@ APICalls.prototype._zerverApiCall = function (req, func, finish) {
 			args = new Array;
 			args.push(data);
 		}
-		
+
 		if ( !Array.isArray(args) ) {
 			finish(400, { 'Cache-Control': 'text/plain' }, '400');
 			return;
@@ -256,6 +256,7 @@ APICalls.prototype._zerverApiCall = function (req, func, finish) {
 
 		if ( !data.noResponse ) {
 			args.push(successCallback);
+			args.push(errorCallback)
 		}
 
 		var val;
@@ -279,7 +280,11 @@ APICalls.prototype._zerverApiCall = function (req, func, finish) {
 	}
 
 	function errorCallback(error) {
-		respond({ error: error+'' });
+		if(error === 400) {
+			finish(400, { 'Content-Type': 'text/plain' }, "400")
+		} else {
+			respond({ error: error+'' });
+		}
 	}
 
 	function respond(response) {
